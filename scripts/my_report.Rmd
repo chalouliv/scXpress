@@ -1,0 +1,215 @@
+---
+title: "scXpress"
+output:
+  html_document:
+    df_print: paged
+    code_folding: hide
+params:
+  lists: ''
+  paths: ''
+  methods: ''
+  queries: ''
+  out_directory: ''
+---
+
+```{r setup, knitr_options, echo=F}
+knitr::opts_chunk$set(message = FALSE, warning=FALSE)
+```
+
+```{r set-up, fig.show='hide', include=F}
+# Loading libraries
+library("ggplot2")
+
+# Getting parameters
+lists = strsplit(params$lists, split = " ")[[1]]
+paths = strsplit(params$paths, split = " ")[[1]]
+methods = strsplit(params$methods, split = " ")[[1]]
+queries = strsplit(params$queries, split = " ")[[1]]
+
+# processing paths 
+for(i in 1:length(paths)){
+  if(paths[i]=="msigdbr") paths[i] <- ".ex."
+  else paths[i] <- ".in."
+}
+```
+
+
+```{r data-load, fig.show='hide', include=F}
+
+# ------------------------------------------------------------------------------
+# Function to load data
+# ------------------------------------------------------------------------------
+data_load <- function(q,l,m,p,o_path) {
+    q_file <- paste(q, p, l, ".", m, ".csv", sep = "")
+    path <- paste0(o_path, "/", 
+                  q, "/", l, 
+                  "/", q_file)
+    df <- as.matrix(data.table::fread(path, header = TRUE)) 
+    rownames(df) <- df[,1]
+    df <- df[,-1]
+    return(df)
+}
+
+# ------------------------------------------------------------------------------
+# Function to create big 
+# ------------------------------------------------------------------------------
+# 'big' is the big list of matrices 
+# big contains all the results (all specified methods and references for that sample)
+
+load_big <- function(q, lists, methods, paths, o_path) {
+
+  big <- vector(mode = "list", length=0)
+
+  for(m in methods) {
+    for(i in 1:length(lists)) {
+      l = lists[i]
+      p = paths[i]
+      big[[m]][[l]] <- data_load(q, l, m, p, o_path) 
+    }
+  }
+  return(big)
+}
+
+```
+
+```{r method-correlation, echo=FALSE, fig.show='hide', include=FALSE}
+
+## Getting correlations between m1 and m2
+cor_method <- function(q, l, m1, m2){
+  x <- as.numeric(data_load(q, l, m1))
+  y <- as.numeric(data_load(q, l, m2))
+  return(cor(x,y, method = "spearman"))
+}
+
+```
+
+```{r plot-preprocessing, echo=FALSE, fig.show='hide', include=FALSE}
+plot_preprocessing <- function(df) {
+  
+  # Melting results into long format for ggplot 
+  long_df <- reshape2::melt(df)
+  colnames(long_df) <-c("signature","cell_ID","score")
+  
+  # Make signature into character for easy plotting
+  long_df$cell_ID <- as.character(long_df$cell_ID)
+  
+  # Make signature into levels for easy plotting
+  long_df$signature <- as.character(long_df$signature)
+  long_df$signature <- factor(long_df$signature, levels = sort(as.character(unique(long_df$signature))))
+  
+  # Make score into numeric for plotting
+  long_df$score <- as.numeric(long_df$score)
+  return(long_df)
+}
+```
+
+
+```{r Plotting, echo=FALSE, fig.show='hide', include=FALSE}
+
+# ------------------------------------------------------------------------------
+# Theme 
+# ------------------------------------------------------------------------------
+
+my_theme = theme(
+              #Adapted from Alva's code
+              text = element_text(size = 15), # sets the general size of all text in the plots
+              axis.ticks = element_line(colour = "grey85"), # sets the ticks width and colour
+              panel.border = element_rect(colour = "grey85", fill=NA, linewidth=1), # sets the panel border width and colour
+              panel.grid.major = element_blank(), # removes the background grid 
+              panel.grid.minor = element_blank(), # removes the background grid 
+              panel.background = element_blank(), # remove background
+              plot.title = element_text(size = 20, face = "bold"), # Sets the title size
+              plot.subtitle = element_text(size = 15), # Sets the title size
+              axis.text.x = element_text(angle = 90, hjust = 1) # sets x-axis labels veritical
+            )
+
+# ------------------------------------------------------------------------------
+# Heatmap 
+# ------------------------------------------------------------------------------
+plot_heatmap <- function(s, m, df) {
+  
+  # title
+  title <- paste(m, " scoring in ", s, sep="")
+  
+  plot_h <- ggplot(df, aes(x = signature, y = cell_ID, fill=score )) +
+    geom_tile(lwd = 0) + 
+    labs(title = title, x="Signature", y = '') +
+    scale_fill_gradientn(
+      colours = c("navy", "white", "red3"), guide="colorbar") +
+    my_theme +
+    theme(axis.text.y = element_blank())
+    
+  return(plot_h)
+}
+
+# ------------------------------------------------------------------------------
+# Heatmap correlation between methods 
+# ------------------------------------------------------------------------------
+
+plot_cor_method <- function (q, l, methods, big) {
+  ## getting correlations between methods
+  m_results <- vector(mode = "list", length=0)
+
+  for(m1 in methods) {
+    for (m2 in methods) {
+        df1 <- as.numeric(big[[m1]][[l]])
+        df2 <- as.numeric(big[[m2]][[l]])
+        m_results[[m1]][[m2]] <- cor(df1,df2, method = "spearman")
+    }
+  }
+  
+  # Melt for plotting
+  m_long <- reshape2::melt(m_results)  
+  colnames(m_long) <- c("value", "m1", "m2")
+
+  #specify order so that ggplot doesn't reorder
+  m_long$m1 <- factor(m_long$m1, levels = c("gsva", "ssgsea", "module_score")) 
+  m_long$m2 <- factor(m_long$m2, levels = c("gsva", "ssgsea", "module_score")) 
+
+  plot_m <- ggplot(m_long, aes(x = m1, y = m2, fill=value )) +
+    geom_tile(lwd = 0) + 
+    labs(title="Spearman Correlation between Methods", subtitle= paste("Query:", q, "       Signature List:", l), x="", y ="") +
+    geom_text(aes(label = sprintf("%.3f", value)), color = "white", size = 6) +
+    scale_fill_gradientn(
+      colours = c("red3", "white", "navy"), 
+      guide="colorbar", 
+      limits = c(-1, 1),
+      breaks = c(-1, 0, 1),
+      labels = c("-1", "0", "1") 
+  ) +
+    my_theme
+  
+  return(plot_m)
+}  
+
+
+```
+
+
+# {.tabset}
+
+```{r layout, fig.width=8, fig.height=6, echo=FALSE, message=FALSE, results="asis"}
+for (m in methods) {
+  cat("##", m, "{.tabset .tabset-pills}\n\n")
+  for (q in queries){
+    cat ("###", q, "\n\n")
+    cat ("#### Signature List: {.tabset}\n\n")
+    for (i in 1:length(lists)){
+      l = lists[i]
+      p = paths[i]
+      cat("#####", l, "\n\n")
+      
+      ## Heat Map: cell type v. average signature expression score
+      df <- data_load(q, l, m, p, params$out_directory)
+      df_p <- plot_preprocessing(df)
+      print(plot_heatmap(q, m, df_p))
+      
+      ## Exiting the tab 
+      cat("\n\n")                              
+    }
+  }
+}
+
+``` 
+
+

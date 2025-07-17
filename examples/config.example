@@ -1,0 +1,83 @@
+# Example configfile for scXpress 
+
+# QUERY ---------------------------------------
+
+queries:
+        # Seurat object (.rda or .rds)
+        <query1_name>:
+          path: </path/to/query1.rda>
+          meta: "NA"
+              # All meta data must be preincluded in Seurat object
+          avg_by: <meta_column_name>
+              # Column name in meta data to preform pre-analysis expression bulking/clustering
+
+        # Counts matrix (.csv or .tsv)    
+        <query2_name>:
+          path: </path/query2.csv>
+          meta: </path/meta2.csv>
+          avg_by: <meta_column_name>
+              # Column name in meta data to preform pre-analysis expression bulking/clustering
+
+# OUTPUT FOLDER ---------------------------------
+
+out: </path/to/output_folder>
+
+# REPORT ---------------------------------------
+report: <report_name>
+
+
+# SIGNATURES ------------------------------------
+
+signatures:
+
+        # Internal list of signatures saved as .rds
+        <list1_name>:
+          path: </path/list1.rds>
+          gs_name: "gs1,gs2,gs3"
+              # Names of gene sets of interest (comma,separated) or 'all_sets'
+          specifier: "NA"
+              # If the signatures are formated as a list of lists. Usage: list1[[specifier]]
+
+        # msigDB signatures:
+        <list2_name>:
+          path: "msigdbr"
+              # Must be "msigdbr" to use a msigDB signatures
+          gs_name: "all_sets"
+              # Names of gene sets of interest (comma,separated) or 'all_sets'
+          species: <species>
+              # See help("msigdbr")
+          category: <category>
+              # See help("msigdbr")
+          subcategory: <sub_category>
+              # See help("msigdbr")
+          gs_style: <gs_style>
+              # Specify naming convention of gene sets (must match sample style)
+          gene_style: <gene_style>
+              # Specify naming convention of genes (must match sample style)
+
+## Note: Each signature list (internal or msigDB) must include a specific 'path'and 'gs_name'.
+##       msigDB signature lists must include a specific 'species'.
+##       Use 'gs_name: all_sets' to evaluate all gene sets in the signature list.
+##       Use 'NA' to complete any other unused options.  
+
+# METHOD ----------------------------------------
+
+methods:
+
+        # List of methods to run
+        - module_score
+        - ssgsea
+        - ssgsea_norm
+        - gsva
+        - gsva_gaussain
+
+## Note: 'ssgsea' does not include the final normalization step outlined in Barbie et al, Nature (2009). 
+##                This allows the scores to be calculated in each cell entirely independently from the 
+##                rest of the query.
+##       'ssgsea_norm' does include the final step and normalizes scores accross the sample.
+##       'gsva' uses a Poisson distribution for it's KCDF. This distribution is appropriate for integer
+##                counts data.
+##       'gsva_gaussian' uses a Gaussian distribution for it's KCDF. This distribution is appropriate for 
+##                continuous expression data.
+
+
